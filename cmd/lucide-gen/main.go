@@ -17,6 +17,7 @@ func main() {
 		packageName   = flag.String("package", "icons", "Package name")
 		prefix        = flag.String("prefix", "", "Function name prefix")
 		categories    = flag.String("categories", "", "Comma-separated categories to include (empty = all)")
+		icons         = flag.String("icons", "", "Comma-separated icon names to include (empty = all)")
 		includeSearch = flag.Bool("search", false, "Include search functionality (fetches metadata)")
 		dryRun        = flag.Bool("dry-run", false, "Show what would be generated without creating files")
 		verbose       = flag.Bool("verbose", false, "Enable verbose output")
@@ -46,14 +47,21 @@ func main() {
 	}
 
 	// Create config
+	requestedIconSet := parseIconsFlag(*icons)
+	requestedIcons := make([]string, 0, len(requestedIconSet))
+	for name := range requestedIconSet {
+		requestedIcons = append(requestedIcons, name)
+	}
+
 	config := lucidegen.Config{
-		OutputDir:     *outputDir,
-		PackageName:   *packageName,
-		Prefix:        *prefix,
-		Categories:    categoryList,
-		IncludeSearch: *includeSearch,
-		DryRun:        *dryRun,
-		Verbose:       *verbose,
+		OutputDir:      *outputDir,
+		PackageName:    *packageName,
+		Prefix:         *prefix,
+		Categories:     categoryList,
+		RequestedIcons: requestedIcons,
+		IncludeSearch:  *includeSearch,
+		DryRun:         *dryRun,
+		Verbose:        *verbose,
 	}
 
 	// Validate config
@@ -127,6 +135,23 @@ func isDigit(r rune) bool {
 	return r >= '0' && r <= '9'
 }
 
+func parseIconsFlag(value string) map[string]struct{} {
+	icons := make(map[string]struct{})
+	if strings.TrimSpace(value) == "" {
+		return icons
+	}
+
+	for _, name := range strings.Split(value, ",") {
+		normalized := strings.ToLower(strings.TrimSpace(name))
+		if normalized == "" {
+			continue
+		}
+		icons[normalized] = struct{}{}
+	}
+
+	return icons
+}
+
 func showHelp() {
 	fmt.Printf(`lucide-gen - Generate type-safe Templ components for Lucide Icons
 
@@ -138,6 +163,7 @@ Options:
   -package string     Package name (default "icons")
   -prefix string      Function name prefix (default "")
   -categories string  Comma-separated categories to include (default: all)
+  -icons string       Comma-separated icon names to include (default: all)
   -search            Include search functionality (fetches metadata)
   -dry-run           Show what would be generated without creating files
   -verbose           Enable verbose output
@@ -150,6 +176,9 @@ Examples:
 
   # Generate specific categories
   lucide-gen -categories "navigation,actions,media"
+
+  # Generate only selected icons
+  lucide-gen -icons "a-arrow-down,search,x"
 
   # Generate with custom package and prefix
   lucide-gen -output ./icons -package icons -prefix Lucide

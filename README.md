@@ -45,6 +45,9 @@ lucide-gen -output ./icons
 # Generate specific categories
 lucide-gen -output ./icons -categories "navigation,actions,media"
 
+# Generate only explicitly requested icons
+lucide-gen -output ./icons -icons "a-arrow-down,search,x"
+
 # Generate with custom package name
 lucide-gen -output ./ui/icons -package icons -prefix Icon
 
@@ -181,6 +184,7 @@ Options:
   -package string     Package name (default "icons")
   -prefix string      Function name prefix (default "")
   -categories string  Comma-separated categories to include (default: all)
+  -icons string       Comma-separated icon names to include (default: all)
   -dry-run           Show what would be generated without creating files
   -version           Show version information
   -help              Show this help message

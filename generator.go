@@ -14,34 +14,35 @@ import (
 
 // Config holds the configuration for icon generation
 type Config struct {
-	OutputDir     string   // Output directory path
-	PackageName   string   // Go package name
-	Prefix        string   // Function name prefix
-	Categories    []string // Icon categories to include (empty = all)
-	DryRun        bool     // Preview without generating files
-	Verbose       bool     // Enable verbose logging
-	IncludeSearch bool     // Include search functionality (requires metadata fetching)
+	OutputDir      string   // Output directory path
+	PackageName    string   // Go package name
+	Prefix         string   // Function name prefix
+	Categories     []string // Icon categories to include (empty = all)
+	RequestedIcons []string // Explicit icon names to include (empty = all)
+	DryRun         bool     // Preview without generating files
+	Verbose        bool     // Enable verbose logging
+	IncludeSearch  bool     // Include search functionality (requires metadata fetching)
 }
 
 // IconData represents a parsed Lucide icon
 type IconData struct {
-	Name         string   `json:"name"`
-	FuncName     string   `json:"func_name"`
-	ViewBox      string   `json:"view_box"`
-	Content      string   `json:"content"`
-	Category     string   `json:"category"`
-	Tags         []string `json:"tags"`
+	Name             string   `json:"name"`
+	FuncName         string   `json:"func_name"`
+	ViewBox          string   `json:"view_box"`
+	Content          string   `json:"content"`
+	Category         string   `json:"category"`
+	Tags             []string `json:"tags"`
 	LucideCategories []string `json:"lucide_categories"`
-	Contributors []string `json:"contributors"`
-	Keywords     []string `json:"keywords"` // Deprecated: use Tags instead
-	Deprecated   bool     `json:"deprecated"`
+	Contributors     []string `json:"contributors"`
+	Keywords         []string `json:"keywords"` // Deprecated: use Tags instead
+	Deprecated       bool     `json:"deprecated"`
 }
 
 // GenerationResult contains information about the generation process
 type GenerationResult struct {
-	IconsGenerated int      `json:"icons_generated"`
-	FilesCreated   []string `json:"files_created"`
-	Categories     []string `json:"categories"`
+	IconsGenerated int           `json:"icons_generated"`
+	FilesCreated   []string      `json:"files_created"`
+	Categories     []string      `json:"categories"`
 	Duration       time.Duration `json:"duration"`
 }
 
@@ -147,7 +148,7 @@ var (
 // Generate creates Lucide icon components based on the provided configuration
 func Generate(config Config) (*GenerationResult, error) {
 	start := time.Now()
-	
+
 	if config.Verbose {
 		fmt.Printf("Starting Lucide icon generation...\n")
 		fmt.Printf("Output directory: %s\n", config.OutputDir)
@@ -165,9 +166,22 @@ func Generate(config Config) (*GenerationResult, error) {
 		return nil, fmt.Errorf("failed to fetch icons: %w", err)
 	}
 
-	// Filter by categories if specified
+	// Validate explicitly requested icon names against all available icons first.
+	if len(config.RequestedIcons) > 0 {
+		unknown := findUnknownRequestedIcons(icons, config.RequestedIcons)
+		if len(unknown) > 0 {
+			return nil, fmt.Errorf("unknown icons: %s", strings.Join(unknown, ","))
+		}
+	}
+
+	// Filter by categories if specified.
 	if len(config.Categories) > 0 {
 		icons = filterIconsByCategories(icons, config.Categories)
+	}
+
+	// Filter by explicitly requested icon names (intersection with categories if both are set).
+	if len(config.RequestedIcons) > 0 {
+		icons = filterIconsByRequestedNames(icons, config.RequestedIcons)
 	}
 
 	// Sort icons by name for consistent output
@@ -238,7 +252,7 @@ func fetchLucideIcons(verbose bool, includeMetadata bool) ([]IconData, error) {
 	}
 
 	iconsDir := filepath.Join(tempDir, "icons")
-	
+
 	// Read all SVG files
 	files, err := os.ReadDir(iconsDir)
 	if err != nil {
@@ -270,7 +284,7 @@ func fetchLucideIcons(verbose bool, includeMetadata bool) ([]IconData, error) {
 
 		iconName := strings.TrimSuffix(file.Name(), ".svg")
 		svgPath := filepath.Join(iconsDir, file.Name())
-		
+
 		// Parse SVG and optionally JSON metadata from local files
 		iconData, err := parseLocalIcon(svgPath, iconName, iconsDir, includeMetadata)
 		if err != nil {
@@ -339,7 +353,6 @@ func parseLocalIcon(svgPath, iconName, iconsDir string, includeMetadata bool) (*
 	}, nil
 }
 
-
 // categorizeIcon determines the category of an icon based on its name
 func categorizeIcon(iconName string) string {
 	for category, icons := range iconCategories {
@@ -369,6 +382,57 @@ func filterIconsByCategories(icons []IconData, categories []string) []IconData {
 	return filtered
 }
 
+func normalizeRequestedIconSet(requested []string) map[string]struct{} {
+	requestedSet := make(map[string]struct{}, len(requested))
+	for _, name := range requested {
+		normalized := strings.ToLower(strings.TrimSpace(name))
+		if normalized == "" {
+			continue
+		}
+		requestedSet[normalized] = struct{}{}
+	}
+	return requestedSet
+}
+
+// findUnknownRequestedIcons returns a sorted list of requested icon names not present in icons.
+func findUnknownRequestedIcons(icons []IconData, requested []string) []string {
+	requestedSet := normalizeRequestedIconSet(requested)
+	if len(requestedSet) == 0 {
+		return nil
+	}
+
+	available := make(map[string]struct{}, len(icons))
+	for _, icon := range icons {
+		available[icon.Name] = struct{}{}
+	}
+
+	unknown := make([]string, 0)
+	for name := range requestedSet {
+		if _, ok := available[name]; !ok {
+			unknown = append(unknown, name)
+		}
+	}
+	sort.Strings(unknown)
+	return unknown
+}
+
+// filterIconsByRequestedNames filters icons to only include explicitly requested names.
+func filterIconsByRequestedNames(icons []IconData, requested []string) []IconData {
+	requestedSet := normalizeRequestedIconSet(requested)
+	if len(requestedSet) == 0 {
+		return icons
+	}
+
+	filtered := make([]IconData, 0, len(icons))
+	for _, icon := range icons {
+		if _, ok := requestedSet[icon.Name]; ok {
+			filtered = append(filtered, icon)
+		}
+	}
+
+	return filtered
+}
+
 // getUniqueCategories returns a sorted list of unique categories
 func getUniqueCategories(icons []IconData) []string {
 	categorySet := make(map[string]bool)
@@ -390,7 +454,7 @@ func toFunctionName(name string) string {
 	// Convert kebab-case to PascalCase
 	parts := strings.Split(name, "-")
 	var result strings.Builder
-	
+
 	for _, part := range parts {
 		if len(part) > 0 {
 			// Capitalize first letter, keep rest as-is
@@ -400,13 +464,13 @@ func toFunctionName(name string) string {
 			}
 		}
 	}
-	
+
 	// Ensure it starts with a letter
 	funcName := result.String()
 	if len(funcName) > 0 && !isLetter(rune(funcName[0])) {
 		funcName = "Icon" + funcName
 	}
-	
+
 	return funcName
 }
 
