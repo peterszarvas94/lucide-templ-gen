@@ -19,6 +19,8 @@ type Config struct {
 	Prefix         string   // Function name prefix
 	Categories     []string // Icon categories to include (empty = all)
 	RequestedIcons []string // Explicit icon names to include (empty = all)
+	SkipRegistry   bool     // Skip generating registry.templ
+	SkipCategories bool     // Skip generating categories.go
 	DryRun         bool     // Preview without generating files
 	Verbose        bool     // Enable verbose logging
 	IncludeSearch  bool     // Include search functionality (requires metadata fetching)
@@ -499,19 +501,23 @@ func generateFiles(icons []IconData, config Config) ([]string, error) {
 	}
 	createdFiles = append(createdFiles, iconsFile)
 
-	// Generate registry file
-	registryFile := filepath.Join(config.OutputDir, "registry.templ")
-	if err := generateRegistryFile(icons, config, registryFile); err != nil {
-		return nil, fmt.Errorf("failed to generate registry file: %w", err)
+	if !config.SkipRegistry {
+		// Generate registry file
+		registryFile := filepath.Join(config.OutputDir, "registry.templ")
+		if err := generateRegistryFile(icons, config, registryFile); err != nil {
+			return nil, fmt.Errorf("failed to generate registry file: %w", err)
+		}
+		createdFiles = append(createdFiles, registryFile)
 	}
-	createdFiles = append(createdFiles, registryFile)
 
-	// Generate categories file
-	categoriesFile := filepath.Join(config.OutputDir, "categories.go")
-	if err := generateCategoriesFile(icons, config, categoriesFile); err != nil {
-		return nil, fmt.Errorf("failed to generate categories file: %w", err)
+	if !config.SkipCategories {
+		// Generate categories file
+		categoriesFile := filepath.Join(config.OutputDir, "categories.go")
+		if err := generateCategoriesFile(icons, config, categoriesFile); err != nil {
+			return nil, fmt.Errorf("failed to generate categories file: %w", err)
+		}
+		createdFiles = append(createdFiles, categoriesFile)
 	}
-	createdFiles = append(createdFiles, categoriesFile)
 
 	// Generate search file (optional)
 	if config.IncludeSearch {

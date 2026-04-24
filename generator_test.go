@@ -1,6 +1,8 @@
 package lucidegen
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -59,5 +61,45 @@ func TestFilterIconsWithCategoriesIntersection(t *testing.T) {
 
 	if len(filtered) != 1 || filtered[0].Name != "search" {
 		t.Fatalf("expected intersection to keep only search, got %v", filtered)
+	}
+}
+
+func TestGenerateFilesSkipRegistryAndCategories(t *testing.T) {
+	tempDir := t.TempDir()
+	icons := []IconData{
+		{
+			Name:     "search",
+			FuncName: "Search",
+			ViewBox:  "0 0 24 24",
+			Content:  "<circle cx=\"11\" cy=\"11\" r=\"8\"></circle>",
+			Category: "ui",
+		},
+	}
+	config := Config{
+		OutputDir:      tempDir,
+		PackageName:    "icons",
+		SkipRegistry:   true,
+		SkipCategories: true,
+	}
+
+	files, err := generateFiles(icons, config)
+	if err != nil {
+		t.Fatalf("generateFiles failed: %v", err)
+	}
+
+	if len(files) != 1 {
+		t.Fatalf("expected exactly one generated file, got %d (%v)", len(files), files)
+	}
+
+	iconsFile := filepath.Join(tempDir, "icons.templ")
+	if _, err := os.Stat(iconsFile); err != nil {
+		t.Fatalf("expected icons.templ to exist: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(tempDir, "registry.templ")); err == nil {
+		t.Fatalf("expected registry.templ to be skipped")
+	}
+	if _, err := os.Stat(filepath.Join(tempDir, "categories.go")); err == nil {
+		t.Fatalf("expected categories.go to be skipped")
 	}
 }
