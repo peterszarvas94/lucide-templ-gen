@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
-	lucidegen "github.com/riclib/lucide-templ-gen"
+	lucidegen "github.com/peterszarvas94/lucide-templ-gen"
 )
 
-const version = "1.2.0"
+const version = "1.3.1"
 
 func main() {
 	var (
@@ -206,6 +206,6 @@ Categories:
   transportation - car, plane, bike, etc.
   business       - briefcase, building, wallet, etc.
 
-For more information, visit: https://github.com/riclib/lucide-templ-gen
+For more information, visit: https://github.com/peterszarvas94/lucide-templ-gen
 `)
 }

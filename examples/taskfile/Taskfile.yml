@@ -61,6 +61,6 @@ tasks:
   install:tools:
     desc: Install required tools
     cmds:
-      - go install github.com/riclib/lucide-templ-gen/cmd/lucide-gen@latest
+      - go install github.com/peterszarvas94/lucide-templ-gen/cmd/lucide-gen@latest
       - go install github.com/a-h/templ/cmd/templ@latest
       - go install github.com/air-verse/air@latest

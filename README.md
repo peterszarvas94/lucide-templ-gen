@@ -17,34 +17,18 @@ A Go code generator that creates type-safe [Templ](https://templ.guide) componen
 ### Install CLI Tool
 
 ```bash
-go install github.com/riclib/lucide-templ-gen/cmd/lucide-gen@latest
-```
-
-### Install From a Fork
-
-If you are using a fork that has not changed the `module` path in `go.mod`, install from a local clone:
-
-```bash
-git clone https://github.com/peterszarvas94/lucide-templ-gen.git
-cd lucide-templ-gen
-go install ./cmd/lucide-gen
-```
-
-Then verify:
-
-```bash
-lucide-gen -help
+go install github.com/peterszarvas94/lucide-templ-gen/cmd/lucide-gen@latest
 ```
 
 ### Add as Dependency
 
 ```bash
-go get github.com/riclib/lucide-templ-gen
+go get github.com/peterszarvas94/lucide-templ-gen
 ```
 
 ### Download Binary
 
-Download pre-built binaries from the [releases page](https://github.com/riclib/lucide-templ-gen/releases):
+Download pre-built binaries from the [releases page](https://github.com/peterszarvas94/lucide-templ-gen/releases):
 
 - **Linux**: `lucide-gen-linux-amd64.tar.gz`
 - **macOS**: `lucide-gen-darwin-amd64.tar.gz` (Intel) or `lucide-gen-darwin-arm64.tar.gz` (Apple Silicon)
@@ -81,7 +65,7 @@ package main
 
 import (
     "log"
-    lucidegen "github.com/riclib/lucide-templ-gen"
+    lucidegen "github.com/peterszarvas94/lucide-templ-gen"
 )
 
 func main() {

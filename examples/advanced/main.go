@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 
-	lucidegen "github.com/riclib/lucide-templ-gen"
+	lucidegen "github.com/peterszarvas94/lucide-templ-gen"
 )
 
 func main() {
@@ -29,10 +29,10 @@ func main() {
 
 	// Start a demo web server
 	fmt.Println("🌐 Starting demo server on http://localhost:8080")
-	
+
 	http.HandleFunc("/", homeHandler)
 	http.HandleFunc("/icons", iconsHandler)
-	
+
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
