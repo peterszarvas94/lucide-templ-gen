@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ type Config struct {
 	RequestedIcons []string // Explicit icon names to include (empty = all)
 	SkipRegistry   bool     // Skip generating registry.templ
 	SkipCategories bool     // Skip generating categories.go
+	MergeExisting  bool     // Merge with already generated icons in output directory
 	DryRun         bool     // Preview without generating files
 	Verbose        bool     // Enable verbose logging
 	IncludeSearch  bool     // Include search functionality (requires metadata fetching)
@@ -163,14 +165,16 @@ func Generate(config Config) (*GenerationResult, error) {
 	}
 
 	// Fetch icons from GitHub
-	icons, err := fetchLucideIcons(config.Verbose, config.IncludeSearch)
+	allIcons, err := fetchLucideIcons(config.Verbose, config.IncludeSearch)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch icons: %w", err)
 	}
 
+	icons := allIcons
+
 	// Validate explicitly requested icon names against all available icons first.
 	if len(config.RequestedIcons) > 0 {
-		unknown := findUnknownRequestedIcons(icons, config.RequestedIcons)
+		unknown := findUnknownRequestedIcons(allIcons, config.RequestedIcons)
 		if len(unknown) > 0 {
 			return nil, fmt.Errorf("unknown icons: %s", strings.Join(unknown, ","))
 		}
@@ -184,6 +188,13 @@ func Generate(config Config) (*GenerationResult, error) {
 	// Filter by explicitly requested icon names (intersection with categories if both are set).
 	if len(config.RequestedIcons) > 0 {
 		icons = filterIconsByRequestedNames(icons, config.RequestedIcons)
+	}
+
+	if config.MergeExisting {
+		icons, err = mergeWithExistingIcons(config.OutputDir, allIcons, icons)
+		if err != nil {
+			return nil, fmt.Errorf("failed to merge with existing icons: %w", err)
+		}
 	}
 
 	// Sort icons by name for consistent output
@@ -232,6 +243,103 @@ func Generate(config Config) (*GenerationResult, error) {
 	}
 
 	return result, nil
+}
+
+func mergeWithExistingIcons(outputDir string, allIcons []IconData, selected []IconData) ([]IconData, error) {
+	existingNames, err := readExistingIconNames(outputDir)
+	if err != nil {
+		return nil, err
+	}
+	if len(existingNames) == 0 {
+		return selected, nil
+	}
+
+	selectedSet := make(map[string]struct{}, len(selected)+len(existingNames))
+	for _, icon := range selected {
+		selectedSet[icon.Name] = struct{}{}
+	}
+	for _, name := range existingNames {
+		selectedSet[name] = struct{}{}
+	}
+
+	merged := make([]IconData, 0, len(selectedSet))
+	for _, icon := range allIcons {
+		if _, ok := selectedSet[icon.Name]; ok {
+			merged = append(merged, icon)
+		}
+	}
+
+	return merged, nil
+}
+
+func readExistingIconNames(outputDir string) ([]string, error) {
+	registryPath := filepath.Join(outputDir, "registry.templ")
+	if names, err := readIconNamesFromRegistryFile(registryPath); err == nil && len(names) > 0 {
+		return names, nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	iconsPath := filepath.Join(outputDir, "icons.templ")
+	if names, err := readIconNamesFromIconsFile(iconsPath); err == nil {
+		return names, nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
+func readIconNamesFromRegistryFile(path string) ([]string, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	matcher := regexp.MustCompile(`(?m)^\s*[A-Za-z_][A-Za-z0-9_]*\s+IconName\s+=\s+"([^"]+)"\s*$`)
+	matches := matcher.FindAllStringSubmatch(string(content), -1)
+
+	names := make([]string, 0, len(matches))
+	seen := make(map[string]struct{}, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		name := match[1]
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+
+	return names, nil
+}
+
+func readIconNamesFromIconsFile(path string) ([]string, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	matcher := regexp.MustCompile(`(?m)^//\s+[A-Za-z_][A-Za-z0-9_]*\s+renders\s+the\s+([a-z0-9-]+)\s+Lucide\s+icon\s*$`)
+	matches := matcher.FindAllStringSubmatch(string(content), -1)
+
+	names := make([]string, 0, len(matches))
+	seen := make(map[string]struct{}, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		name := match[1]
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+
+	return names, nil
 }
 
 // fetchLucideIcons retrieves icon data from the Lucide GitHub repository via git clone

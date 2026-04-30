@@ -9,7 +9,7 @@ import (
 	lucidegen "github.com/peterszarvas94/lucide-templ-gen"
 )
 
-const version = "1.3.1"
+const version = "1.3.2"
 
 func main() {
 	var (
@@ -21,6 +21,7 @@ func main() {
 		skipRegistry   = flag.Bool("skip-registry", false, "Skip generating registry.templ")
 		skipCategories = flag.Bool("skip-categories", false, "Skip generating categories.go")
 		includeSearch  = flag.Bool("search", false, "Include search functionality (fetches metadata)")
+		mergeExisting  = flag.Bool("merge", true, "Merge with already generated icons in output directory")
 		dryRun         = flag.Bool("dry-run", false, "Show what would be generated without creating files")
 		verbose        = flag.Bool("verbose", false, "Enable verbose output")
 		showVersion    = flag.Bool("version", false, "Show version information")
@@ -64,6 +65,7 @@ func main() {
 		SkipRegistry:   *skipRegistry,
 		SkipCategories: *skipCategories,
 		IncludeSearch:  *includeSearch,
+		MergeExisting:  *mergeExisting,
 		DryRun:         *dryRun,
 		Verbose:        *verbose,
 	}
@@ -171,6 +173,7 @@ Options:
   -skip-registry      Skip generating registry.templ
   -skip-categories    Skip generating categories.go
   -search            Include search functionality (fetches metadata)
+  -merge             Merge with already generated icons in output directory (default true)
   -dry-run           Show what would be generated without creating files
   -verbose           Enable verbose output
   -version           Show version information

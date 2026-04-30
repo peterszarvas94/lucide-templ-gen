@@ -103,3 +103,75 @@ func TestGenerateFilesSkipRegistryAndCategories(t *testing.T) {
 		t.Fatalf("expected categories.go to be skipped")
 	}
 }
+
+func TestMergeWithExistingIconsUsesRegistryNames(t *testing.T) {
+	tempDir := t.TempDir()
+
+	registryContent := `package icons
+
+const (
+	IconSearch IconName = "search"
+	IconX IconName = "x"
+)`
+	if err := os.WriteFile(filepath.Join(tempDir, "registry.templ"), []byte(registryContent), 0644); err != nil {
+		t.Fatalf("failed writing registry.templ: %v", err)
+	}
+
+	allIcons := []IconData{
+		{Name: "search", Category: "ui"},
+		{Name: "x", Category: "ui"},
+		{Name: "plus", Category: "actions"},
+	}
+	selected := []IconData{{Name: "plus", Category: "actions"}}
+
+	merged, err := mergeWithExistingIcons(tempDir, allIcons, selected)
+	if err != nil {
+		t.Fatalf("mergeWithExistingIcons failed: %v", err)
+	}
+
+	got := make([]string, 0, len(merged))
+	for _, icon := range merged {
+		got = append(got, icon.Name)
+	}
+	want := []string{"search", "x", "plus"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected merged icons: got %v, want %v", got, want)
+	}
+}
+
+func TestMergeWithExistingIconsFallbackToIconsFile(t *testing.T) {
+	tempDir := t.TempDir()
+
+	iconsContent := `package icons
+
+// Search renders the search Lucide icon
+templ Search(attrs templ.Attributes) {}
+
+// X renders the x Lucide icon
+templ X(attrs templ.Attributes) {}
+`
+	if err := os.WriteFile(filepath.Join(tempDir, "icons.templ"), []byte(iconsContent), 0644); err != nil {
+		t.Fatalf("failed writing icons.templ: %v", err)
+	}
+
+	allIcons := []IconData{
+		{Name: "search", Category: "ui"},
+		{Name: "x", Category: "ui"},
+		{Name: "plus", Category: "actions"},
+	}
+	selected := []IconData{{Name: "plus", Category: "actions"}}
+
+	merged, err := mergeWithExistingIcons(tempDir, allIcons, selected)
+	if err != nil {
+		t.Fatalf("mergeWithExistingIcons failed: %v", err)
+	}
+
+	got := make([]string, 0, len(merged))
+	for _, icon := range merged {
+		got = append(got, icon.Name)
+	}
+	want := []string{"search", "x", "plus"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected merged icons: got %v, want %v", got, want)
+	}
+}
