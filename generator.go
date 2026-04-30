@@ -20,6 +20,7 @@ type Config struct {
 	Prefix         string   // Function name prefix
 	Categories     []string // Icon categories to include (empty = all)
 	RequestedIcons []string // Explicit icon names to include (empty = all)
+	RemovedIcons   []string // Explicit icon names to exclude from final output
 	SkipRegistry   bool     // Skip generating registry.templ
 	SkipCategories bool     // Skip generating categories.go
 	MergeExisting  bool     // Merge with already generated icons in output directory
@@ -180,6 +181,13 @@ func Generate(config Config) (*GenerationResult, error) {
 		}
 	}
 
+	if len(config.RemovedIcons) > 0 {
+		unknown := findUnknownRequestedIcons(allIcons, config.RemovedIcons)
+		if len(unknown) > 0 {
+			return nil, fmt.Errorf("unknown icons in remove list: %s", strings.Join(unknown, ","))
+		}
+	}
+
 	// Filter by categories if specified.
 	if len(config.Categories) > 0 {
 		icons = filterIconsByCategories(icons, config.Categories)
@@ -195,6 +203,10 @@ func Generate(config Config) (*GenerationResult, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to merge with existing icons: %w", err)
 		}
+	}
+
+	if len(config.RemovedIcons) > 0 {
+		icons = filterOutIconsByNames(icons, config.RemovedIcons)
 	}
 
 	// Sort icons by name for consistent output
@@ -536,6 +548,22 @@ func filterIconsByRequestedNames(icons []IconData, requested []string) []IconDat
 	filtered := make([]IconData, 0, len(icons))
 	for _, icon := range icons {
 		if _, ok := requestedSet[icon.Name]; ok {
+			filtered = append(filtered, icon)
+		}
+	}
+
+	return filtered
+}
+
+func filterOutIconsByNames(icons []IconData, removed []string) []IconData {
+	removedSet := normalizeRequestedIconSet(removed)
+	if len(removedSet) == 0 {
+		return icons
+	}
+
+	filtered := make([]IconData, 0, len(icons))
+	for _, icon := range icons {
+		if _, shouldRemove := removedSet[icon.Name]; !shouldRemove {
 			filtered = append(filtered, icon)
 		}
 	}

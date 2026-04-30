@@ -64,6 +64,26 @@ func TestFilterIconsWithCategoriesIntersection(t *testing.T) {
 	}
 }
 
+func TestFilterOutIconsByNames(t *testing.T) {
+	icons := []IconData{
+		{Name: "search", Category: "ui"},
+		{Name: "x", Category: "ui"},
+		{Name: "plus", Category: "actions"},
+	}
+
+	filtered := filterOutIconsByNames(icons, []string{"x", "plus"})
+
+	got := make([]string, 0, len(filtered))
+	for _, icon := range filtered {
+		got = append(got, icon.Name)
+	}
+
+	want := []string{"search"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected filtered icons: got %v, want %v", got, want)
+	}
+}
+
 func TestGenerateFilesSkipRegistryAndCategories(t *testing.T) {
 	tempDir := t.TempDir()
 	icons := []IconData{
@@ -173,5 +193,41 @@ templ X(attrs templ.Attributes) {}
 	want := []string{"search", "x", "plus"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected merged icons: got %v, want %v", got, want)
+	}
+}
+
+func TestMergeThenRemoveIcons(t *testing.T) {
+	tempDir := t.TempDir()
+
+	registryContent := `package icons
+
+const (
+	IconSearch IconName = "search"
+	IconX IconName = "x"
+)`
+	if err := os.WriteFile(filepath.Join(tempDir, "registry.templ"), []byte(registryContent), 0644); err != nil {
+		t.Fatalf("failed writing registry.templ: %v", err)
+	}
+
+	allIcons := []IconData{
+		{Name: "search", Category: "ui"},
+		{Name: "x", Category: "ui"},
+		{Name: "plus", Category: "actions"},
+	}
+	selected := []IconData{{Name: "plus", Category: "actions"}}
+
+	merged, err := mergeWithExistingIcons(tempDir, allIcons, selected)
+	if err != nil {
+		t.Fatalf("mergeWithExistingIcons failed: %v", err)
+	}
+
+	final := filterOutIconsByNames(merged, []string{"x"})
+	got := make([]string, 0, len(final))
+	for _, icon := range final {
+		got = append(got, icon.Name)
+	}
+	want := []string{"search", "plus"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected final icons: got %v, want %v", got, want)
 	}
 }

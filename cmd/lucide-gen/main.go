@@ -9,7 +9,7 @@ import (
 	lucidegen "github.com/peterszarvas94/lucide-templ-gen"
 )
 
-const version = "1.3.2"
+const version = "1.3.3"
 
 func main() {
 	var (
@@ -18,6 +18,7 @@ func main() {
 		prefix         = flag.String("prefix", "", "Function name prefix")
 		categories     = flag.String("categories", "", "Comma-separated categories to include (empty = all)")
 		icons          = flag.String("icons", "", "Comma-separated icon names to include (empty = all)")
+		removeIcons    = flag.String("remove", "", "Comma-separated icon names to remove from final output")
 		skipRegistry   = flag.Bool("skip-registry", false, "Skip generating registry.templ")
 		skipCategories = flag.Bool("skip-categories", false, "Skip generating categories.go")
 		includeSearch  = flag.Bool("search", false, "Include search functionality (fetches metadata)")
@@ -56,12 +57,19 @@ func main() {
 		requestedIcons = append(requestedIcons, name)
 	}
 
+	removedIconSet := parseIconsFlag(*removeIcons)
+	removedIcons := make([]string, 0, len(removedIconSet))
+	for name := range removedIconSet {
+		removedIcons = append(removedIcons, name)
+	}
+
 	config := lucidegen.Config{
 		OutputDir:      *outputDir,
 		PackageName:    *packageName,
 		Prefix:         *prefix,
 		Categories:     categoryList,
 		RequestedIcons: requestedIcons,
+		RemovedIcons:   removedIcons,
 		SkipRegistry:   *skipRegistry,
 		SkipCategories: *skipCategories,
 		IncludeSearch:  *includeSearch,
@@ -170,6 +178,7 @@ Options:
   -prefix string      Function name prefix (default "")
   -categories string  Comma-separated categories to include (default: all)
   -icons string       Comma-separated icon names to include (default: all)
+  -remove string      Comma-separated icon names to remove from final output
   -skip-registry      Skip generating registry.templ
   -skip-categories    Skip generating categories.go
   -search            Include search functionality (fetches metadata)
