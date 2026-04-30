@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	lucidegen "github.com/peterszarvas94/lucide-templ-gen"
+	lucidegen "github.com/peterszarvas94/lucide-templ-gen/v2"
 )
 
 const version = "2.0.0"

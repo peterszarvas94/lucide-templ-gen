@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	lucidegen "github.com/peterszarvas94/lucide-templ-gen"
+	lucidegen "github.com/peterszarvas94/lucide-templ-gen/v2"
 )
 
 func main() {

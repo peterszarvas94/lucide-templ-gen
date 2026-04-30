@@ -5,7 +5,7 @@ A focused CLI for managing a persistent Lucide icon set and generating Templ com
 ## Install
 
 ```bash
-go install github.com/peterszarvas94/lucide-templ-gen/cmd/lucide-gen@latest
+go install github.com/peterszarvas94/lucide-templ-gen/v2/cmd/lucide-gen@latest
 ```
 
 ## Usage
