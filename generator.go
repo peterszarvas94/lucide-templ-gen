@@ -171,8 +171,8 @@ func fetchLucideIcons(verbose bool, includeMetadata bool) ([]IconData, error) {
 	}
 	defer os.RemoveAll(tempDir) // Clean up
 
-	// Clone the repository (shallow clone for speed)
-	cmd := exec.Command("git", "clone", "--depth", "1", "https://github.com/lucide-icons/lucide.git", tempDir)
+	// Clone the repository at specific release tag (shallow clone for speed)
+	cmd := exec.Command("git", "clone", "--depth", "1", "--branch", "1.14.0", "https://github.com/lucide-icons/lucide.git", tempDir)
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("failed to clone repository: %w", err)
 	}

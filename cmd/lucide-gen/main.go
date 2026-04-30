@@ -9,7 +9,7 @@ import (
 	lucidegen "github.com/peterszarvas94/lucide-templ-gen/v2"
 )
 
-const version = "2.0.3"
+const version = "2.0.4"
 
 func main() {
 	if len(os.Args) < 2 {
