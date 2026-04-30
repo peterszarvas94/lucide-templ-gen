@@ -16,7 +16,6 @@ package {{.PackageName}}
 
 {{range .Icons}}
 // {{.FuncName}} renders the {{.Name}} Lucide icon
-// Category: {{.Category}}
 templ {{.FuncName}}(attrs templ.Attributes) {
 	<svg viewBox="{{.ViewBox}}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" { attrs... }>
 		{{.Content}}
@@ -85,21 +84,19 @@ package {{.PackageName}}
 type SearchResult struct {
 	IconName  IconName
 	Relevance int // Higher is more relevant
-	MatchType string // "exact", "tag", "category", "partial"
+	MatchType string // "exact", "tag", "partial"
 }
 
 // IconSearch provides search and filter functionality for icons
 type IconSearch struct {
 	icons []IconSearchData
 	tagIndex map[string][]IconName
-	categoryIndex map[string][]IconName
 }
 
 // IconSearchData contains searchable metadata for an icon
 type IconSearchData struct {
 	Name       IconName
 	Tags       []string
-	Categories []string
 	AllText    string // Pre-computed search text for efficiency
 }
 
@@ -110,12 +107,10 @@ func NewIconSearch() *IconSearch {
 {{range .Icons}}			{
 				Name:       {{call $.ToConstantName .Name $.Prefix}},
 				Tags:       []string{{"{"}}{{range .Tags}}"{{.}}", {{end}}{{"}"}},
-				Categories: []string{{"{"}}{{range .LucideCategories}}"{{.}}", {{end}}{{"}"}},
-				AllText:    strings.ToLower("{{.Name}} {{join .Tags " "}} {{join .LucideCategories " "}}"),
+				AllText:    strings.ToLower("{{.Name}} {{join .Tags " "}}"),
 			},
 {{end}}		},
 		tagIndex:      make(map[string][]IconName),
-		categoryIndex: make(map[string][]IconName),
 	}
 	
 	search.buildIndexes()
@@ -130,16 +125,10 @@ func (s *IconSearch) buildIndexes() {
 			tagKey := strings.ToLower(tag)
 			s.tagIndex[tagKey] = append(s.tagIndex[tagKey], icon.Name)
 		}
-		
-		// Build category index
-		for _, category := range icon.Categories {
-			categoryKey := strings.ToLower(category)
-			s.categoryIndex[categoryKey] = append(s.categoryIndex[categoryKey], icon.Name)
-		}
 	}
 }
 
-// Search performs incremental search across icon names, tags, and categories
+// Search performs incremental search across icon names and tags
 func (s *IconSearch) Search(query string) []SearchResult {
 	if query == "" {
 		return s.getAllIcons()
@@ -175,21 +164,7 @@ func (s *IconSearch) Search(query string) []SearchResult {
 		}
 	}
 	
-	// 3. Exact category matches
-	if icons, exists := s.categoryIndex[query]; exists {
-		for _, iconName := range icons {
-			if !seen[iconName] {
-				results = append(results, SearchResult{
-					IconName:  iconName,
-					Relevance: 80,
-					MatchType: "category",
-				})
-				seen[iconName] = true
-			}
-		}
-	}
-	
-	// 4. Partial matches in names, tags, and categories
+	// 3. Partial matches in names and tags
 	for _, icon := range s.icons {
 		if !seen[icon.Name] && strings.Contains(icon.AllText, query) {
 			relevance := s.calculatePartialRelevance(icon, query)
@@ -209,16 +184,6 @@ func (s *IconSearch) Search(query string) []SearchResult {
 	})
 	
 	return results
-}
-
-// SearchByCategory returns all icons in a specific category
-func (s *IconSearch) SearchByCategory(category string) []IconName {
-	if icons, exists := s.categoryIndex[strings.ToLower(category)]; exists {
-		result := make([]IconName, len(icons))
-		copy(result, icons)
-		return result
-	}
-	return []IconName{}
 }
 
 // SearchByTag returns all icons with a specific tag
@@ -241,34 +206,12 @@ func (s *IconSearch) GetAllTags() []string {
 	return tags
 }
 
-// GetAllCategories returns all available categories sorted alphabetically
-func (s *IconSearch) GetAllCategories() []string {
-	categories := make([]string, 0, len(s.categoryIndex))
-	for category := range s.categoryIndex {
-		categories = append(categories, category)
-	}
-	sort.Strings(categories)
-	return categories
-}
-
 // GetTagsForIcon returns all tags for a specific icon
 func (s *IconSearch) GetTagsForIcon(iconName IconName) []string {
 	for _, icon := range s.icons {
 		if icon.Name == iconName {
 			result := make([]string, len(icon.Tags))
 			copy(result, icon.Tags)
-			return result
-		}
-	}
-	return []string{}
-}
-
-// GetCategoriesForIcon returns all categories for a specific icon
-func (s *IconSearch) GetCategoriesForIcon(iconName IconName) []string {
-	for _, icon := range s.icons {
-		if icon.Name == iconName {
-			result := make([]string, len(icon.Categories))
-			copy(result, icon.Categories)
 			return result
 		}
 	}
@@ -308,13 +251,6 @@ func (s *IconSearch) calculatePartialRelevance(icon IconSearchData, query string
 		}
 	}
 	
-	// Category contains query - lowest relevance
-	for _, category := range icon.Categories {
-		if strings.Contains(strings.ToLower(category), query) {
-			return 30
-		}
-	}
-	
 	return 0
 }
 
@@ -335,33 +271,12 @@ func (s *IconSearch) getAllIcons() []SearchResult {
 type SearchOptions struct {
 	MaxResults int
 	MinRelevance int
-	Categories []string // Filter by specific categories
 	Tags []string // Filter by specific tags
 }
 
 // SearchWithOptions performs search with additional filtering options
 func (s *IconSearch) SearchWithOptions(query string, options SearchOptions) []SearchResult {
 	results := s.Search(query)
-	
-	// Apply category filter
-	if len(options.Categories) > 0 {
-		filtered := []SearchResult{}
-		categorySet := make(map[string]bool)
-		for _, cat := range options.Categories {
-			categorySet[strings.ToLower(cat)] = true
-		}
-		
-		for _, result := range results {
-			iconCategories := s.GetCategoriesForIcon(result.IconName)
-			for _, cat := range iconCategories {
-				if categorySet[strings.ToLower(cat)] {
-					filtered = append(filtered, result)
-					break
-				}
-			}
-		}
-		results = filtered
-	}
 	
 	// Apply tag filter
 	if len(options.Tags) > 0 {
@@ -412,16 +327,6 @@ func (s *IconSearch) GetSearchResultIcons(query string, attrs templ.Attributes) 
 	return icons
 }
 
-// GetCategoryIcons returns all icons from a category as a slice of components
-func (s *IconSearch) GetCategoryIcons(category string, attrs templ.Attributes) []templ.Component {
-	iconNames := s.SearchByCategory(category)
-	icons := make([]templ.Component, len(iconNames))
-	for i, iconName := range iconNames {
-		icons[i] = Icon(iconName, attrs)
-	}
-	return icons
-}
-
 // GetTagIcons returns all icons with a specific tag as a slice of components
 func (s *IconSearch) GetTagIcons(tag string, attrs templ.Attributes) []templ.Component {
 	iconNames := s.SearchByTag(tag)
@@ -442,58 +347,13 @@ func (s *IconSearch) GetAllIconComponents(attrs templ.Attributes) []templ.Compon
 	return icons
 }`
 
-// Template for categorized icon access
-const categoriesTemplate = `// Code generated by lucide-templ-gen on {{.Timestamp}}. DO NOT EDIT.
-
-package {{.PackageName}}
-
-// Category name constants
-const (
-{{range .Categories}}	Category{{call $.ToCategoryName .}} = "{{.}}"
-{{end}})
-
-{{range $category := .Categories}}
-// {{call $.ToCategoryName $category}}Icons returns all {{$category}} category icons
-func {{call $.ToCategoryName $category}}Icons() []IconName {
-	return []IconName{
-{{range $.Icons}}{{if eq .Category $category}}		{{call $.ToConstantName .Name $.Prefix}},
-{{end}}{{end}}	}
-}
-{{end}}
-
-// IconsByCategory returns icons grouped by category
-func IconsByCategory() map[string][]IconName {
-	return map[string][]IconName{
-{{range $category := .Categories}}		Category{{call $.ToCategoryName $category}}: {{call $.ToCategoryName $category}}Icons(),
-{{end}}	}
-}
-
-// GetIconCategory returns the category for a given icon name
-func GetIconCategory(name IconName) string {
-	switch name {
-{{range .Icons}}	case {{call $.ToConstantName .Name $.Prefix}}:
-		return "{{.Category}}"
-{{end}}	default:
-		return ""
-	}
-}
-
-// AllCategories returns all available category names
-func AllCategories() []string {
-	return []string{
-{{range .Categories}}		Category{{call $.ToCategoryName .}},
-{{end}}	}
-}`
-
 // TemplateData holds data for template execution
 type TemplateData struct {
 	PackageName      string
 	Prefix           string
 	Icons            []IconData
-	Categories       []string
 	Timestamp        string
 	ToConstantName   func(string, string) string
-	ToCategoryName   func(string) string
 	Join             func([]string, string) string
 }
 
@@ -540,50 +400,6 @@ func generateRegistryFile(icons []IconData, config Config, outputPath string) er
 	return tmpl.Execute(file, data)
 }
 
-// generateCategoriesFile creates the categories file
-func generateCategoriesFile(icons []IconData, config Config, outputPath string) error {
-	categories := getUniqueCategories(icons)
-	
-	data := TemplateData{
-		PackageName:    config.PackageName,
-		Prefix:         config.Prefix,
-		Icons:          icons,
-		Categories:     categories,
-		Timestamp:      time.Now().Format(time.RFC3339),
-		ToConstantName: toConstantName,
-		ToCategoryName: toCategoryName,
-		Join:           joinStrings,
-	}
-
-	tmpl := template.Must(template.New("categories").Parse(categoriesTemplate))
-	
-	file, err := os.Create(outputPath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	return tmpl.Execute(file, data)
-}
-
-// toCategoryName converts a category name to a function name
-func toCategoryName(category string) string {
-	// Convert to title case and remove special characters
-	parts := strings.Split(category, "-")
-	var result strings.Builder
-	
-	for _, part := range parts {
-		if len(part) > 0 {
-			result.WriteString(strings.ToUpper(part[:1]))
-			if len(part) > 1 {
-				result.WriteString(part[1:])
-			}
-		}
-	}
-	
-	return result.String()
-}
-
 // joinStrings joins a slice of strings with a separator
 func joinStrings(slice []string, sep string) string {
 	return strings.Join(slice, sep)
@@ -597,7 +413,6 @@ func generateSearchFile(icons []IconData, config Config, outputPath string) erro
 		Icons:          icons,
 		Timestamp:      time.Now().Format(time.RFC3339),
 		ToConstantName: toConstantName,
-		ToCategoryName: toCategoryName,
 		Join:           joinStrings,
 	}
 

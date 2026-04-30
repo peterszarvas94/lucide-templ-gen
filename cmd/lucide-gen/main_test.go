@@ -1,18 +1,24 @@
 package main
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
-func TestParseIconsFlag(t *testing.T) {
-	parsed := parseIconsFlag(" a-arrow-down,search ,X,,search ")
-
-	if len(parsed) != 3 {
-		t.Fatalf("expected 3 unique icons, got %d", len(parsed))
+func TestParseIconsArg(t *testing.T) {
+	got := parseIconsArg(" arrow-left,arrow-right,ARROW-LEFT ")
+	want := []string{"arrow-left", "arrow-right"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected icons: got %v, want %v", got, want)
 	}
+}
 
-	expected := []string{"a-arrow-down", "search", "x"}
-	for _, name := range expected {
-		if _, ok := parsed[name]; !ok {
-			t.Fatalf("expected icon %q to be parsed", name)
-		}
+func TestParsePathOnlyArgsDefault(t *testing.T) {
+	got, err := parsePathOnlyArgs("list", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "./icons" {
+		t.Fatalf("unexpected output dir: got %q", got)
 	}
 }

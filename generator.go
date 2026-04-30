@@ -15,39 +15,100 @@ import (
 
 // Config holds the configuration for icon generation
 type Config struct {
-	OutputDir      string   // Output directory path
-	PackageName    string   // Go package name
-	Prefix         string   // Function name prefix
-	Categories     []string // Icon categories to include (empty = all)
-	RequestedIcons []string // Explicit icon names to include (empty = all)
-	RemovedIcons   []string // Explicit icon names to exclude from final output
-	SkipRegistry   bool     // Skip generating registry.templ
-	SkipCategories bool     // Skip generating categories.go
-	MergeExisting  bool     // Merge with already generated icons in output directory
-	DryRun         bool     // Preview without generating files
-	Verbose        bool     // Enable verbose logging
-	IncludeSearch  bool     // Include search functionality (requires metadata fetching)
+	OutputDir   string // Output directory path
+	PackageName string // Go package name
+	Prefix      string // Optional function/constant name prefix
+}
+
+// ListAvailableIconNames returns all icon names available upstream.
+func ListAvailableIconNames() ([]string, error) {
+	icons, err := fetchLucideIcons(false, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch icons: %w", err)
+	}
+	names := make([]string, 0, len(icons))
+	for _, icon := range icons {
+		names = append(names, icon.Name)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// GenerateFromIconNames generates files from an explicit icon set.
+// Unlike Generate, an empty iconNames slice means "generate empty set".
+func GenerateFromIconNames(config Config, iconNames []string) (*GenerationResult, error) {
+	start := time.Now()
+
+	if config.PackageName == "" {
+		config.PackageName = "icons"
+	}
+
+	allIcons, err := fetchLucideIcons(false, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch icons: %w", err)
+	}
+
+	unknown := findUnknownRequestedIcons(allIcons, iconNames)
+	if len(unknown) > 0 {
+		return nil, fmt.Errorf("unknown icons: %s", strings.Join(unknown, ","))
+	}
+
+	requestedSet := normalizeRequestedIconSet(iconNames)
+	icons := make([]IconData, 0, len(requestedSet))
+	for _, icon := range allIcons {
+		if _, ok := requestedSet[icon.Name]; ok {
+			icons = append(icons, icon)
+		}
+	}
+	sort.Slice(icons, func(i, j int) bool {
+		return icons[i].Name < icons[j].Name
+	})
+
+	if err := os.MkdirAll(config.OutputDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	files, err := generateFiles(icons, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate files: %w", err)
+	}
+
+	return &GenerationResult{
+		IconsGenerated: len(icons),
+		FilesCreated:   files,
+		Duration:       time.Since(start),
+	}, nil
+}
+
+// ReadRegistryIconNames reads icon names from registry.templ in outputDir.
+func ReadRegistryIconNames(outputDir string) ([]string, error) {
+	registryPath := filepath.Join(outputDir, "registry.templ")
+	names, err := readIconNamesFromRegistryFile(registryPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	return names, nil
 }
 
 // IconData represents a parsed Lucide icon
 type IconData struct {
-	Name             string   `json:"name"`
-	FuncName         string   `json:"func_name"`
-	ViewBox          string   `json:"view_box"`
-	Content          string   `json:"content"`
-	Category         string   `json:"category"`
-	Tags             []string `json:"tags"`
-	LucideCategories []string `json:"lucide_categories"`
-	Contributors     []string `json:"contributors"`
-	Keywords         []string `json:"keywords"` // Deprecated: use Tags instead
-	Deprecated       bool     `json:"deprecated"`
+	Name         string   `json:"name"`
+	FuncName     string   `json:"func_name"`
+	ViewBox      string   `json:"view_box"`
+	Content      string   `json:"content"`
+	Tags         []string `json:"tags"`
+	Contributors []string `json:"contributors"`
+	Keywords     []string `json:"keywords"` // Deprecated: use Tags instead
+	Deprecated   bool     `json:"deprecated"`
 }
 
 // GenerationResult contains information about the generation process
 type GenerationResult struct {
 	IconsGenerated int           `json:"icons_generated"`
 	FilesCreated   []string      `json:"files_created"`
-	Categories     []string      `json:"categories"`
 	Duration       time.Duration `json:"duration"`
 }
 
@@ -64,243 +125,8 @@ type IconMetadata struct {
 	Schema       string   `json:"$schema"`
 	Contributors []string `json:"contributors"`
 	Tags         []string `json:"tags"`
-	Categories   []string `json:"categories"`
 }
 
-var (
-	// Icon categories mapping
-	iconCategories = map[string][]string{
-		"navigation": {
-			"home", "menu", "chevron-up", "chevron-down", "chevron-left", "chevron-right",
-			"arrow-up", "arrow-down", "arrow-left", "arrow-right", "arrow-up-right",
-			"arrow-down-right", "arrow-down-left", "arrow-up-left", "corner-up-left",
-			"corner-up-right", "corner-down-left", "corner-down-right", "move",
-			"move-diagonal", "move-horizontal", "move-vertical", "navigation",
-			"compass", "map", "map-pin", "route", "signpost",
-		},
-		"actions": {
-			"plus", "minus", "edit", "edit-2", "edit-3", "trash", "trash-2", "save",
-			"copy", "clipboard", "clipboard-copy", "clipboard-list", "cut", "scissors",
-			"undo", "redo", "refresh-cw", "refresh-ccw", "rotate-cw", "rotate-ccw",
-			"flip-horizontal", "flip-vertical", "maximize", "minimize", "maximize-2",
-			"minimize-2", "zoom-in", "zoom-out", "search", "filter", "sort-asc",
-			"sort-desc", "more-horizontal", "more-vertical", "settings", "sliders",
-		},
-		"media": {
-			"play", "pause", "stop", "skip-forward", "skip-back", "fast-forward",
-			"rewind", "volume", "volume-1", "volume-2", "volume-x", "mic", "mic-off",
-			"video", "video-off", "camera", "camera-off", "image", "film", "music",
-			"headphones", "speaker", "radio", "tv", "monitor", "smartphone", "tablet",
-		},
-		"communication": {
-			"mail", "send", "inbox", "outbox", "phone", "phone-call", "phone-incoming",
-			"phone-outgoing", "phone-off", "message-circle", "message-square",
-			"chat", "users", "user", "user-plus", "user-minus", "user-check",
-			"user-x", "at-sign", "bell", "bell-off", "bell-ring", "notification",
-		},
-		"files": {
-			"file", "file-text", "file-plus", "file-minus", "file-x", "files",
-			"folder", "folder-open", "folder-plus", "folder-minus", "folder-x",
-			"hard-drive", "download", "upload", "import", "export", "paperclip",
-			"link", "link-2", "external-link", "archive", "package", "package-2",
-		},
-		"ui": {
-			"eye", "eye-off", "lock", "unlock", "key", "shield", "shield-check",
-			"shield-alert", "shield-x", "check", "check-circle", "check-circle-2",
-			"x", "x-circle", "alert-triangle", "alert-circle", "alert-octagon",
-			"info", "help-circle", "question-mark", "loader", "loader-2", "circle",
-			"square", "triangle", "diamond", "heart", "star", "bookmark",
-		},
-		"data": {
-			"database", "server", "cloud", "cloud-snow", "cloud-rain", "cloud-lightning",
-			"wifi", "wifi-off", "signal", "activity", "trending-up", "trending-down",
-			"bar-chart", "bar-chart-2", "bar-chart-3", "bar-chart-4", "pie-chart",
-			"line-chart", "area-chart", "git-branch", "git-commit", "git-merge",
-			"git-pull-request", "github", "gitlab", "code", "code-2", "terminal",
-		},
-		"devices": {
-			"smartphone", "tablet", "laptop", "monitor", "tv", "watch", "gamepad",
-			"gamepad-2", "keyboard", "mouse", "printer", "scanner", "usb", "bluetooth",
-			"battery", "battery-charging", "battery-full", "battery-low", "plug",
-			"power", "power-off", "cpu", "memory-stick", "hard-drive", "disc",
-		},
-		"social": {
-			"heart", "star", "thumbs-up", "thumbs-down", "share", "share-2", "rss",
-			"bookmark", "flag", "award", "trophy", "medal", "gift", "cake", "party-popper",
-			"smile", "frown", "meh", "laugh", "angry", "surprised", "wink", "kiss",
-			"facebook", "twitter", "instagram", "linkedin", "youtube", "twitch",
-		},
-		"weather": {
-			"sun", "moon", "star", "cloud", "cloud-drizzle", "cloud-rain", "cloud-snow",
-			"cloud-lightning", "umbrella", "wind", "tornado", "rainbow", "sunrise",
-			"sunset", "thermometer", "thermometer-sun", "thermometer-snowflake",
-			"droplets", "waves", "zap", "flame", "snowflake", "tree-pine",
-		},
-		"transportation": {
-			"car", "truck", "bus", "train", "plane", "ship", "bike", "scooter",
-			"taxi", "fuel", "map", "map-pin", "route", "compass", "navigation",
-			"anchor", "sail", "wheel", "tire", "traffic-cone", "construction",
-		},
-		"business": {
-			"briefcase", "building", "building-2", "factory", "store", "bank",
-			"credit-card", "wallet", "coins", "banknote", "receipt", "calculator",
-			"presentation", "chart", "graph", "analytics", "target", "goal",
-			"handshake", "deal", "contract", "signature", "stamp", "scale",
-		},
-	}
-)
-
-// Generate creates Lucide icon components based on the provided configuration
-func Generate(config Config) (*GenerationResult, error) {
-	start := time.Now()
-
-	if config.Verbose {
-		fmt.Printf("Starting Lucide icon generation...\n")
-		fmt.Printf("Output directory: %s\n", config.OutputDir)
-		fmt.Printf("Package name: %s\n", config.PackageName)
-	}
-
-	// Set defaults
-	if config.PackageName == "" {
-		config.PackageName = "icons"
-	}
-
-	// Fetch icons from GitHub
-	allIcons, err := fetchLucideIcons(config.Verbose, config.IncludeSearch)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch icons: %w", err)
-	}
-
-	icons := allIcons
-
-	// Validate explicitly requested icon names against all available icons first.
-	if len(config.RequestedIcons) > 0 {
-		unknown := findUnknownRequestedIcons(allIcons, config.RequestedIcons)
-		if len(unknown) > 0 {
-			return nil, fmt.Errorf("unknown icons: %s", strings.Join(unknown, ","))
-		}
-	}
-
-	if len(config.RemovedIcons) > 0 {
-		unknown := findUnknownRequestedIcons(allIcons, config.RemovedIcons)
-		if len(unknown) > 0 {
-			return nil, fmt.Errorf("unknown icons in remove list: %s", strings.Join(unknown, ","))
-		}
-	}
-
-	// Filter by categories if specified.
-	if len(config.Categories) > 0 {
-		icons = filterIconsByCategories(icons, config.Categories)
-	}
-
-	// Filter by explicitly requested icon names (intersection with categories if both are set).
-	if len(config.RequestedIcons) > 0 {
-		icons = filterIconsByRequestedNames(icons, config.RequestedIcons)
-	}
-
-	if config.MergeExisting {
-		icons, err = mergeWithExistingIcons(config.OutputDir, allIcons, icons)
-		if err != nil {
-			return nil, fmt.Errorf("failed to merge with existing icons: %w", err)
-		}
-	}
-
-	if len(config.RemovedIcons) > 0 {
-		icons = filterOutIconsByNames(icons, config.RemovedIcons)
-	}
-
-	// Sort icons by name for consistent output
-	sort.Slice(icons, func(i, j int) bool {
-		return icons[i].Name < icons[j].Name
-	})
-
-	if config.Verbose {
-		fmt.Printf("Found %d icons to generate\n", len(icons))
-	}
-
-	result := &GenerationResult{
-		IconsGenerated: len(icons),
-		Categories:     getUniqueCategories(icons),
-		Duration:       time.Since(start),
-	}
-
-	if config.DryRun {
-		fmt.Printf("DRY RUN: Would generate %d icons\n", len(icons))
-		for _, icon := range icons {
-			fmt.Printf("  - %s (%s)\n", icon.FuncName, icon.Category)
-		}
-		return result, nil
-	}
-
-	// Create output directory
-	if err := os.MkdirAll(config.OutputDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create output directory: %w", err)
-	}
-
-	// Generate files
-	files, err := generateFiles(icons, config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate files: %w", err)
-	}
-
-	result.FilesCreated = files
-	result.Duration = time.Since(start)
-
-	if config.Verbose {
-		fmt.Printf("Generation completed in %v\n", result.Duration)
-		fmt.Printf("Created files:\n")
-		for _, file := range files {
-			fmt.Printf("  - %s\n", file)
-		}
-	}
-
-	return result, nil
-}
-
-func mergeWithExistingIcons(outputDir string, allIcons []IconData, selected []IconData) ([]IconData, error) {
-	existingNames, err := readExistingIconNames(outputDir)
-	if err != nil {
-		return nil, err
-	}
-	if len(existingNames) == 0 {
-		return selected, nil
-	}
-
-	selectedSet := make(map[string]struct{}, len(selected)+len(existingNames))
-	for _, icon := range selected {
-		selectedSet[icon.Name] = struct{}{}
-	}
-	for _, name := range existingNames {
-		selectedSet[name] = struct{}{}
-	}
-
-	merged := make([]IconData, 0, len(selectedSet))
-	for _, icon := range allIcons {
-		if _, ok := selectedSet[icon.Name]; ok {
-			merged = append(merged, icon)
-		}
-	}
-
-	return merged, nil
-}
-
-func readExistingIconNames(outputDir string) ([]string, error) {
-	registryPath := filepath.Join(outputDir, "registry.templ")
-	if names, err := readIconNamesFromRegistryFile(registryPath); err == nil && len(names) > 0 {
-		return names, nil
-	} else if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-
-	iconsPath := filepath.Join(outputDir, "icons.templ")
-	if names, err := readIconNamesFromIconsFile(iconsPath); err == nil {
-		return names, nil
-	} else if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-
-	return nil, nil
-}
 
 func readIconNamesFromRegistryFile(path string) ([]string, error) {
 	content, err := os.ReadFile(path)
@@ -325,30 +151,8 @@ func readIconNamesFromRegistryFile(path string) ([]string, error) {
 		names = append(names, name)
 	}
 
-	return names, nil
-}
-
-func readIconNamesFromIconsFile(path string) ([]string, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	matcher := regexp.MustCompile(`(?m)^//\s+[A-Za-z_][A-Za-z0-9_]*\s+renders\s+the\s+([a-z0-9-]+)\s+Lucide\s+icon\s*$`)
-	matches := matcher.FindAllStringSubmatch(string(content), -1)
-
-	names := make([]string, 0, len(matches))
-	seen := make(map[string]struct{}, len(matches))
-	for _, match := range matches {
-		if len(match) < 2 {
-			continue
-		}
-		name := match[1]
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		seen[name] = struct{}{}
-		names = append(names, name)
+	if len(names) == 0 && strings.Contains(string(content), "IconName =") {
+		return nil, fmt.Errorf("registry parse error in %s: found IconName tokens but no valid constants", path)
 	}
 
 	return names, nil
@@ -457,51 +261,14 @@ func parseLocalIcon(svgPath, iconName, iconsDir string, includeMetadata bool) (*
 		metadata = &IconMetadata{}
 	}
 
-	// Determine category (fallback if no Lucide categories)
-	category := categorizeIcon(iconName)
-	if len(metadata.Categories) > 0 {
-		category = metadata.Categories[0] // Use first Lucide category as primary
-	}
-
 	return &IconData{
-		Name:             iconName,
-		FuncName:         toFunctionName(iconName),
-		ViewBox:          svg.ViewBox,
-		Content:          strings.TrimSpace(svg.Content),
-		Category:         category,
-		Tags:             metadata.Tags,
-		LucideCategories: metadata.Categories,
-		Contributors:     metadata.Contributors,
+		Name:         iconName,
+		FuncName:     toFunctionName(iconName),
+		ViewBox:      svg.ViewBox,
+		Content:      strings.TrimSpace(svg.Content),
+		Tags:         metadata.Tags,
+		Contributors: metadata.Contributors,
 	}, nil
-}
-
-// categorizeIcon determines the category of an icon based on its name
-func categorizeIcon(iconName string) string {
-	for category, icons := range iconCategories {
-		for _, icon := range icons {
-			if icon == iconName {
-				return category
-			}
-		}
-	}
-	return "misc"
-}
-
-// filterIconsByCategories filters icons to only include specified categories
-func filterIconsByCategories(icons []IconData, categories []string) []IconData {
-	categorySet := make(map[string]bool)
-	for _, cat := range categories {
-		categorySet[strings.ToLower(cat)] = true
-	}
-
-	var filtered []IconData
-	for _, icon := range icons {
-		if categorySet[icon.Category] {
-			filtered = append(filtered, icon)
-		}
-	}
-
-	return filtered
 }
 
 func normalizeRequestedIconSet(requested []string) map[string]struct{} {
@@ -555,38 +322,6 @@ func filterIconsByRequestedNames(icons []IconData, requested []string) []IconDat
 	return filtered
 }
 
-func filterOutIconsByNames(icons []IconData, removed []string) []IconData {
-	removedSet := normalizeRequestedIconSet(removed)
-	if len(removedSet) == 0 {
-		return icons
-	}
-
-	filtered := make([]IconData, 0, len(icons))
-	for _, icon := range icons {
-		if _, shouldRemove := removedSet[icon.Name]; !shouldRemove {
-			filtered = append(filtered, icon)
-		}
-	}
-
-	return filtered
-}
-
-// getUniqueCategories returns a sorted list of unique categories
-func getUniqueCategories(icons []IconData) []string {
-	categorySet := make(map[string]bool)
-	for _, icon := range icons {
-		categorySet[icon.Category] = true
-	}
-
-	var categories []string
-	for cat := range categorySet {
-		categories = append(categories, cat)
-	}
-
-	sort.Strings(categories)
-	return categories
-}
-
 // toFunctionName converts an icon name to a valid Go function name
 func toFunctionName(name string) string {
 	// Convert kebab-case to PascalCase
@@ -637,32 +372,12 @@ func generateFiles(icons []IconData, config Config) ([]string, error) {
 	}
 	createdFiles = append(createdFiles, iconsFile)
 
-	if !config.SkipRegistry {
-		// Generate registry file
-		registryFile := filepath.Join(config.OutputDir, "registry.templ")
-		if err := generateRegistryFile(icons, config, registryFile); err != nil {
-			return nil, fmt.Errorf("failed to generate registry file: %w", err)
-		}
-		createdFiles = append(createdFiles, registryFile)
+	// Generate registry file
+	registryFile := filepath.Join(config.OutputDir, "registry.templ")
+	if err := generateRegistryFile(icons, config, registryFile); err != nil {
+		return nil, fmt.Errorf("failed to generate registry file: %w", err)
 	}
-
-	if !config.SkipCategories {
-		// Generate categories file
-		categoriesFile := filepath.Join(config.OutputDir, "categories.go")
-		if err := generateCategoriesFile(icons, config, categoriesFile); err != nil {
-			return nil, fmt.Errorf("failed to generate categories file: %w", err)
-		}
-		createdFiles = append(createdFiles, categoriesFile)
-	}
-
-	// Generate search file (optional)
-	if config.IncludeSearch {
-		searchFile := filepath.Join(config.OutputDir, "search.templ")
-		if err := generateSearchFile(icons, config, searchFile); err != nil {
-			return nil, fmt.Errorf("failed to generate search file: %w", err)
-		}
-		createdFiles = append(createdFiles, searchFile)
-	}
+	createdFiles = append(createdFiles, registryFile)
 
 	return createdFiles, nil
 }

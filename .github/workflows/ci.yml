@@ -109,17 +109,17 @@ jobs:
     - name: Make binary executable
       run: chmod +x bin/lucide-gen
 
-    - name: Test dry run
+    - name: Test list on empty set
       run: |
-        ./bin/lucide-gen -output ./test-output -dry-run -verbose
+        ./bin/lucide-gen list --output ./test-output
 
-    - name: Test basic generation
+    - name: Test generation flow
       run: |
-        ./bin/lucide-gen -output ./test-output -categories "navigation,actions" -verbose
+        ./bin/lucide-gen add "arrow-left,arrow-right" --output ./test-output
+        ./bin/lucide-gen sync --output ./test-output
         
     - name: Verify output
       run: |
-        test -f ./test-output/icons_templ.go
-        test -f ./test-output/registry_templ.go
-        test -f ./test-output/categories_templ.go
+        test -f ./test-output/icons.templ
+        test -f ./test-output/registry.templ
         echo "✅ All expected files generated"

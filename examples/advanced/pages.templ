@@ -54,7 +54,7 @@ templ HomePage() {
 				<div class="feature">
 					@components.Package(templ.Attributes{"class": "feature-icon"})
 					<h3>Tree Shakeable</h3>
-					<p>Only generate the icon categories you need</p>
+					<p>Only generate the icons you need</p>
 				</div>
 				
 				<div class="feature">
@@ -85,7 +85,6 @@ templ IconsPage() {
 				.icon-item:hover { background: #f9f9f9; }
 				.icon-large { width: 2rem; height: 2rem; margin-bottom: 0.5rem; }
 				.icon-name { font-size: 0.75rem; color: #666; text-align: center; }
-				.category { margin: 2rem 0 1rem; color: #007acc; border-bottom: 1px solid #ddd; }
 			</style>
 		</head>
 		<body>
@@ -103,29 +102,8 @@ templ IconsPage() {
 			<h1>Icon Gallery</h1>
 			<p>All available icons in this generated set</p>
 
-			<h2 class="category">Navigation Icons</h2>
 			<div class="gallery">
-				for _, iconName := range components.NavigationIcons() {
-					<div class="icon-item">
-						@components.Icon(iconName, templ.Attributes{"class": "icon-large"})
-						<div class="icon-name">{ string(iconName) }</div>
-					</div>
-				}
-			</div>
-
-			<h2 class="category">Action Icons</h2>
-			<div class="gallery">
-				for _, iconName := range components.ActionsIcons() {
-					<div class="icon-item">
-						@components.Icon(iconName, templ.Attributes{"class": "icon-large"})
-						<div class="icon-name">{ string(iconName) }</div>
-					</div>
-				}
-			</div>
-
-			<h2 class="category">UI Icons</h2>
-			<div class="gallery">
-				for _, iconName := range components.UiIcons() {
+				for _, iconName := range components.AllIcons() {
 					<div class="icon-item">
 						@components.Icon(iconName, templ.Attributes{"class": "icon-large"})
 						<div class="icon-name">{ string(iconName) }</div>

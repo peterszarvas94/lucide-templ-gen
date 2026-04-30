@@ -1,160 +1,202 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	lucidegen "github.com/peterszarvas94/lucide-templ-gen"
 )
 
-const version = "1.3.3"
+const version = "2.0.0"
 
 func main() {
-	var (
-		outputDir      = flag.String("output", ".", "Output directory")
-		packageName    = flag.String("package", "icons", "Package name")
-		prefix         = flag.String("prefix", "", "Function name prefix")
-		categories     = flag.String("categories", "", "Comma-separated categories to include (empty = all)")
-		icons          = flag.String("icons", "", "Comma-separated icon names to include (empty = all)")
-		removeIcons    = flag.String("remove", "", "Comma-separated icon names to remove from final output")
-		skipRegistry   = flag.Bool("skip-registry", false, "Skip generating registry.templ")
-		skipCategories = flag.Bool("skip-categories", false, "Skip generating categories.go")
-		includeSearch  = flag.Bool("search", false, "Include search functionality (fetches metadata)")
-		mergeExisting  = flag.Bool("merge", true, "Merge with already generated icons in output directory")
-		dryRun         = flag.Bool("dry-run", false, "Show what would be generated without creating files")
-		verbose        = flag.Bool("verbose", false, "Enable verbose output")
-		showVersion    = flag.Bool("version", false, "Show version information")
-		help           = flag.Bool("help", false, "Show help information")
-	)
-
-	flag.Parse()
-
-	if *help {
+	if len(os.Args) < 2 {
 		showHelp()
-		return
+		os.Exit(1)
 	}
 
-	if *showVersion {
+	command := os.Args[1]
+	args := os.Args[2:]
+
+	switch command {
+	case "add":
+		runAdd(args)
+	case "remove":
+		runRemove(args)
+	case "list":
+		runList(args)
+	case "sync":
+		runSync(args)
+	case "help", "--help", "-h":
+		showHelp()
+	case "version", "--version", "-version":
 		fmt.Printf("lucide-gen version %s\n", version)
+	default:
+		exitErr("unknown command: %s", command)
+	}
+}
+
+func runAdd(args []string) {
+	outputDir, all, iconsArg := parseOperationArgs("add", args)
+
+	current, err := lucidegen.ReadRegistryIconNames(outputDir)
+	if err != nil {
+		exitErr("failed to read current registry: %v", err)
+	}
+
+	currentSet := sliceToSet(current)
+	before := len(currentSet)
+
+	if all {
+		allNames, err := lucidegen.ListAvailableIconNames()
+		if err != nil {
+			exitErr("add --all failed: %v", err)
+		}
+		result, err := lucidegen.GenerateFromIconNames(lucidegen.Config{OutputDir: outputDir, PackageName: "icons"}, allNames)
+		if err != nil {
+			exitErr("add --all failed: %v", err)
+		}
+		fmt.Printf("Added all icons. Before: %d, After: %d\n", before, result.IconsGenerated)
 		return
 	}
 
-	// Parse categories
-	var categoryList []string
-	if *categories != "" {
-		categoryList = strings.Split(*categories, ",")
-		for i, cat := range categoryList {
-			categoryList[i] = strings.TrimSpace(cat)
-		}
+	toAdd := parseIconsArg(iconsArg)
+	for _, name := range toAdd {
+		currentSet[name] = struct{}{}
 	}
 
-	// Create config
-	requestedIconSet := parseIconsFlag(*icons)
-	requestedIcons := make([]string, 0, len(requestedIconSet))
-	for name := range requestedIconSet {
-		requestedIcons = append(requestedIcons, name)
-	}
-
-	removedIconSet := parseIconsFlag(*removeIcons)
-	removedIcons := make([]string, 0, len(removedIconSet))
-	for name := range removedIconSet {
-		removedIcons = append(removedIcons, name)
-	}
-
-	config := lucidegen.Config{
-		OutputDir:      *outputDir,
-		PackageName:    *packageName,
-		Prefix:         *prefix,
-		Categories:     categoryList,
-		RequestedIcons: requestedIcons,
-		RemovedIcons:   removedIcons,
-		SkipRegistry:   *skipRegistry,
-		SkipCategories: *skipCategories,
-		IncludeSearch:  *includeSearch,
-		MergeExisting:  *mergeExisting,
-		DryRun:         *dryRun,
-		Verbose:        *verbose,
-	}
-
-	// Validate config
-	if err := validateConfig(config); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Generate icons
-	result, err := lucidegen.Generate(config)
+	finalNames := sortedSetKeys(currentSet)
+	result, err := lucidegen.GenerateFromIconNames(lucidegen.Config{OutputDir: outputDir, PackageName: "icons"}, finalNames)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Generation failed: %v\n", err)
-		os.Exit(1)
+		exitErr("add failed: %v", err)
 	}
 
-	// Show results
-	if !config.DryRun {
-		fmt.Printf("✅ Successfully generated %d icons in %v\n", result.IconsGenerated, result.Duration)
-		if config.Verbose {
-			fmt.Printf("📁 Files created:\n")
-			for _, file := range result.FilesCreated {
-				fmt.Printf("   %s\n", file)
+	addedCount := len(currentSet) - before
+	fmt.Printf("Added %d icon(s). Before: %d, After: %d\n", addedCount, before, result.IconsGenerated)
+}
+
+func runRemove(args []string) {
+	outputDir, all, iconsArg := parseOperationArgs("remove", args)
+
+	current, err := lucidegen.ReadRegistryIconNames(outputDir)
+	if err != nil {
+		exitErr("failed to read current registry: %v", err)
+	}
+
+	currentSet := sliceToSet(current)
+	before := len(currentSet)
+
+	if all {
+		result, err := lucidegen.GenerateFromIconNames(lucidegen.Config{OutputDir: outputDir, PackageName: "icons"}, []string{})
+		if err != nil {
+			exitErr("remove --all failed: %v", err)
+		}
+		fmt.Printf("Removed all icons. Before: %d, After: %d\n", before, result.IconsGenerated)
+		return
+	}
+
+	toRemove := parseIconsArg(iconsArg)
+	removed := 0
+	for _, name := range toRemove {
+		if _, ok := currentSet[name]; ok {
+			delete(currentSet, name)
+			removed++
+		}
+	}
+
+	finalNames := sortedSetKeys(currentSet)
+	result, err := lucidegen.GenerateFromIconNames(lucidegen.Config{OutputDir: outputDir, PackageName: "icons"}, finalNames)
+	if err != nil {
+		exitErr("remove failed: %v", err)
+	}
+
+	fmt.Printf("Removed %d icon(s). Before: %d, After: %d\n", removed, before, result.IconsGenerated)
+}
+
+func runList(args []string) {
+	outputDir, err := parsePathOnlyArgs("list", args)
+	if err != nil {
+		exitErr("%v", err)
+	}
+
+	current, err := lucidegen.ReadRegistryIconNames(outputDir)
+	if err != nil {
+		exitErr("failed to read current registry: %v", err)
+	}
+
+	sort.Strings(current)
+	for _, name := range current {
+		fmt.Println(name)
+	}
+	fmt.Printf("Total: %d\n", len(current))
+}
+
+func runSync(args []string) {
+	outputDir, err := parsePathOnlyArgs("sync", args)
+	if err != nil {
+		exitErr("%v", err)
+	}
+
+	current, err := lucidegen.ReadRegistryIconNames(outputDir)
+	if err != nil {
+		exitErr("failed to read current registry: %v", err)
+	}
+
+	before := len(current)
+	result, err := lucidegen.GenerateFromIconNames(lucidegen.Config{OutputDir: outputDir, PackageName: "icons"}, current)
+	if err != nil {
+		exitErr("sync failed: %v", err)
+	}
+
+	fmt.Printf("Synced icons. Before: %d, After: %d\n", before, result.IconsGenerated)
+}
+
+func parseOperationArgs(command string, args []string) (outputDir string, all bool, iconsArg string) {
+	outputDir = "./icons"
+	remaining := make([]string, 0, len(args))
+
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--output" {
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+				exitErr("%s: --output requires a value", command)
 			}
-			fmt.Printf("📂 Categories: %s\n", strings.Join(result.Categories, ", "))
+			outputDir = args[i+1]
+			i++
+			continue
 		}
+		remaining = append(remaining, args[i])
 	}
+
+	if len(remaining) != 1 {
+		exitErr("%s requires exactly one arg: <icons> or --all", command)
+	}
+
+	if remaining[0] == "--all" {
+		return outputDir, true, ""
+	}
+
+	if strings.HasPrefix(remaining[0], "-") {
+		exitErr("%s invalid arg: %s", command, remaining[0])
+	}
+
+	return outputDir, false, remaining[0]
 }
 
-func validateConfig(config lucidegen.Config) error {
-	if config.OutputDir == "" {
-		return fmt.Errorf("output directory cannot be empty")
+func parsePathOnlyArgs(command string, args []string) (string, error) {
+	outputDir := "./icons"
+	if len(args) == 0 {
+		return outputDir, nil
 	}
-
-	if config.PackageName == "" {
-		return fmt.Errorf("package name cannot be empty")
+	if len(args) == 2 && args[0] == "--output" && strings.TrimSpace(args[1]) != "" {
+		return args[1], nil
 	}
-
-	// Validate package name
-	if !isValidPackageName(config.PackageName) {
-		return fmt.Errorf("invalid package name: %s", config.PackageName)
-	}
-
-	return nil
+	return "", fmt.Errorf("%s only supports optional --output <dir>", command)
 }
 
-func isValidPackageName(name string) bool {
-	if len(name) == 0 {
-		return false
-	}
-
-	// Must start with letter or underscore
-	if !isLetter(rune(name[0])) && name[0] != '_' {
-		return false
-	}
-
-	// Rest can be letters, digits, or underscores
-	for _, r := range name[1:] {
-		if !isLetter(r) && !isDigit(r) && r != '_' {
-			return false
-		}
-	}
-
-	return true
-}
-
-func isLetter(r rune) bool {
-	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
-}
-
-func isDigit(r rune) bool {
-	return r >= '0' && r <= '9'
-}
-
-func parseIconsFlag(value string) map[string]struct{} {
+func parseIconsArg(value string) []string {
 	icons := make(map[string]struct{})
-	if strings.TrimSpace(value) == "" {
-		return icons
-	}
-
 	for _, name := range strings.Split(value, ",") {
 		normalized := strings.ToLower(strings.TrimSpace(name))
 		if normalized == "" {
@@ -162,62 +204,57 @@ func parseIconsFlag(value string) map[string]struct{} {
 		}
 		icons[normalized] = struct{}{}
 	}
+	if len(icons) == 0 {
+		exitErr("icons arg is empty")
+	}
+	return sortedSetKeys(icons)
+}
 
-	return icons
+func sliceToSet(items []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		set[item] = struct{}{}
+	}
+	return set
+}
+
+func sortedSetKeys(set map[string]struct{}) []string {
+	items := make([]string, 0, len(set))
+	for k := range set {
+		items = append(items, k)
+	}
+	sort.Strings(items)
+	return items
+}
+
+func exitErr(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
+	os.Exit(1)
 }
 
 func showHelp() {
-	fmt.Printf(`lucide-gen - Generate type-safe Templ components for Lucide Icons
-
-Usage:
-  lucide-gen [options]
-
+	fmt.Printf(`Usage:
+  lucide-gen <command> [arg]
+Commands:
+  add <icons>       Add icon(s) to current set
+  add --all         Add all Lucide icons
+  remove <icons>    Remove icon(s) from current set
+  remove --all      Remove all icons
+  list              List current icons
+  sync              Regenerate files from current icon set
+  help              Show help
+  version           Show version
+Arg:
+  <icons>           Comma-separated icon names
+                    Example: "arrow-left,arrow-right"
 Options:
-  -output string      Output directory (default ".")
-  -package string     Package name (default "icons")
-  -prefix string      Function name prefix (default "")
-  -categories string  Comma-separated categories to include (default: all)
-  -icons string       Comma-separated icon names to include (default: all)
-  -remove string      Comma-separated icon names to remove from final output
-  -skip-registry      Skip generating registry.templ
-  -skip-categories    Skip generating categories.go
-  -search            Include search functionality (fetches metadata)
-  -merge             Merge with already generated icons in output directory (default true)
-  -dry-run           Show what would be generated without creating files
-  -verbose           Enable verbose output
-  -version           Show version information
-  -help              Show this help message
-
+  --output <dir>    Output folder (default: ./icons)
 Examples:
-  # Generate all icons in current directory
-  lucide-gen
-
-  # Generate specific categories
-  lucide-gen -categories "navigation,actions,media"
-
-  # Generate only selected icons
-  lucide-gen -icons "a-arrow-down,search,x"
-
-  # Generate with custom package and prefix
-  lucide-gen -output ./icons -package icons -prefix Lucide
-
-  # Dry run to preview
-  lucide-gen -dry-run -verbose
-
-Categories:
-  navigation      - home, menu, chevron-*, arrow-*, etc.
-  actions         - plus, minus, edit, trash, save, etc.
-  media          - play, pause, stop, volume, etc.
-  communication  - mail, phone, message, bell, etc.
-  files          - file, folder, download, upload, etc.
-  ui             - eye, lock, search, check, etc.
-  data           - database, server, cloud, chart, etc.
-  devices        - smartphone, laptop, monitor, etc.
-  social         - heart, star, share, thumbs-up, etc.
-  weather        - sun, moon, cloud, rain, etc.
-  transportation - car, plane, bike, etc.
-  business       - briefcase, building, wallet, etc.
-
-For more information, visit: https://github.com/peterszarvas94/lucide-templ-gen
+  lucide-gen add "arrow-left,arrow-right"
+  lucide-gen add --all
+  lucide-gen remove "arrow-left"
+  lucide-gen remove --all
+  lucide-gen list
+  lucide-gen sync
 `)
 }

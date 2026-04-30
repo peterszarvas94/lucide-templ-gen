@@ -49,18 +49,18 @@ templ IconButton(iconName icons.IconName, label string, onClick string) {
 	</button>
 }
 
-// Example with different icon categories
+// Example with different icon groups
 templ Dashboard() {
 	<div class="dashboard">
-		<!-- Navigation icons -->
+		<!-- Basic navigation -->
 		@IconButton(icons.IconHome, "Home", "goHome()")
 		@IconButton(icons.IconSettings, "Settings", "openSettings()")
 		
-		<!-- Media icons -->
+		<!-- Playback -->
 		@IconButton(icons.IconPlay, "Play", "startPlayback()")
 		@IconButton(icons.IconPause, "Pause", "pausePlayback()")
 		
-		<!-- Action icons -->
+		<!-- Common actions -->
 		@IconButton(icons.IconSave, "Save", "saveData()")
 		@IconButton(icons.IconRefreshCw, "Refresh", "refreshData()")
 	</div>

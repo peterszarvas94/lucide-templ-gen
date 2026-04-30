@@ -11,21 +11,19 @@ import (
 
 func main() {
 	// Generate icons programmatically
-	config := lucidegen.Config{
-		OutputDir:   "./components",
-		PackageName: "components",
-		Categories:  []string{"navigation", "actions", "ui"},
-		Verbose:     true,
+	all, err := lucidegen.ListAvailableIconNames()
+	if err != nil {
+		log.Fatalf("Failed to load icon list: %v", err)
 	}
 
-	result, err := lucidegen.Generate(config)
+	config := lucidegen.Config{OutputDir: "./components", PackageName: "components"}
+	result, err := lucidegen.GenerateFromIconNames(config, all)
 	if err != nil {
 		log.Fatalf("Generation failed: %v", err)
 	}
 
 	fmt.Printf("✅ Generated %d icons in %v\n", result.IconsGenerated, result.Duration)
 	fmt.Printf("📁 Files created: %v\n", result.FilesCreated)
-	fmt.Printf("📂 Categories: %v\n", result.Categories)
 
 	// Start a demo web server
 	fmt.Println("🌐 Starting demo server on http://localhost:8080")
