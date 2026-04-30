@@ -30,7 +30,7 @@ func main() {
 	case "sync":
 		runSync(args)
 	case "help", "--help", "-h":
-		showHelp()
+		showHelpFor(args)
 	case "version", "--version", "-version":
 		fmt.Printf("lucide-gen version %s\n", version)
 	default:
@@ -39,6 +39,11 @@ func main() {
 }
 
 func runAdd(args []string) {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		showAddHelp()
+		return
+	}
+
 	outputDir, all, iconsArg := parseOperationArgs("add", args)
 
 	current, err := lucidegen.ReadRegistryIconNames(outputDir)
@@ -78,6 +83,11 @@ func runAdd(args []string) {
 }
 
 func runRemove(args []string) {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		showRemoveHelp()
+		return
+	}
+
 	outputDir, all, iconsArg := parseOperationArgs("remove", args)
 
 	current, err := lucidegen.ReadRegistryIconNames(outputDir)
@@ -116,6 +126,11 @@ func runRemove(args []string) {
 }
 
 func runList(args []string) {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		showListHelp()
+		return
+	}
+
 	outputDir, err := parsePathOnlyArgs("list", args)
 	if err != nil {
 		exitErr("%v", err)
@@ -134,6 +149,11 @@ func runList(args []string) {
 }
 
 func runSync(args []string) {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		showSyncHelp()
+		return
+	}
+
 	outputDir, err := parsePathOnlyArgs("sync", args)
 	if err != nil {
 		exitErr("%v", err)
@@ -256,5 +276,87 @@ Examples:
   lucide-gen remove --all
   lucide-gen list
   lucide-gen sync
+`)
+}
+
+func showHelpFor(args []string) {
+	if len(args) == 0 {
+		showHelp()
+		return
+	}
+
+	switch args[0] {
+	case "add":
+		showAddHelp()
+	case "remove":
+		showRemoveHelp()
+	case "list":
+		showListHelp()
+	case "sync":
+		showSyncHelp()
+	case "help":
+		showHelp()
+	case "version":
+		fmt.Println("Usage: lucide-gen version")
+	default:
+		exitErr("unknown help topic: %s", args[0])
+	}
+}
+
+func showAddHelp() {
+	fmt.Printf(`Usage:
+  lucide-gen add <icons> [--output <dir>]
+  lucide-gen add --all [--output <dir>]
+
+Description:
+  Add icon(s) to current set and regenerate files.
+
+Arg:
+  <icons>  Comma-separated icon names
+           Example: "arrow-left,arrow-right"
+
+Option:
+  --output <dir>  Output folder (default: ./icons)
+`)
+}
+
+func showRemoveHelp() {
+	fmt.Printf(`Usage:
+  lucide-gen remove <icons> [--output <dir>]
+  lucide-gen remove --all [--output <dir>]
+
+Description:
+  Remove icon(s) from current set and regenerate files.
+
+Arg:
+  <icons>  Comma-separated icon names
+           Example: "arrow-left,arrow-right"
+
+Option:
+  --output <dir>  Output folder (default: ./icons)
+`)
+}
+
+func showListHelp() {
+	fmt.Printf(`Usage:
+  lucide-gen list [--output <dir>]
+
+Description:
+  List current icons from registry.
+
+Option:
+  --output <dir>  Output folder (default: ./icons)
+`)
+}
+
+func showSyncHelp() {
+	fmt.Printf(`Usage:
+  lucide-gen sync [--output <dir>]
+
+Description:
+  Regenerate files from current registry set.
+
+Option:
+  --output <dir>  Output folder (default: ./icons)
 `)
 }
