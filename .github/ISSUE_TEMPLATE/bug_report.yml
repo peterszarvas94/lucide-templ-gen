@@ -35,7 +35,7 @@ body:
     attributes:
       label: Go Version
       description: What version of Go are you using?
-      placeholder: "go1.21.0"
+      placeholder: "go1.25.0"
     validations:
       required: true
 
